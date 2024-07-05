@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - main
-      - 'sk-**'
+      - 'SK-**'
 
 env:
   REGISTRY: ghcr.io/stephen-t-kaye
