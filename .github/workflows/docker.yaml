@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - 'SK-**'
+      - 'sk-**'
 
 env:
   REGISTRY: ghcr.io/stephen-t-kaye
