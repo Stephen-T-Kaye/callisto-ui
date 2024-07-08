@@ -5,7 +5,7 @@ services:
   web:
     image: node:17-alpine
     ports:
-      - '50001:9090'
+      - '60001:9090'
     volumes:
       - .:/app
       - './node_modules_linux:/app/node_modules'
