@@ -3,25 +3,35 @@ on:
   push:
     branches:
       - main
-      - '**eahw-**'
+      - 'SK-**'
+      - 'sk-**'
+
+env:
+  REGISTRY: ghcr.io/stephen-t-kaye
+  IMAGE: callisto-ui
 
 jobs:
   build-docker-image:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
     env:
-      NPM_AUTH_TOKEN: ${{ secrets.npm_auth_token }}
+      # NPM_AUTH_TOKEN: ${{ secrets.npm_auth_token }}
       VITE_KC_URL: "https://keycloak.callisto.localhost/auth" 
       VITE_KC_REALM: "callisto" 
       VITE_KC_CLIENTID: "callistoreactclient" 
-      VITE_TIMECARD_API_URL: "https://callisto-timecard-restapi.callisto.localhost/"
-      VITE_ACCRUALS_API_URL: "https://callisto-accruals-restapi.callisto.localhost/"
-      QUAY_REGISTRY: quay.io/ukhomeofficedigital
-      QUAY_REPO_NAME: callisto-ui
+      VITE_TIMECARD_API_URL: "https://timecard-restapi.callisto.localhost/"
+      VITE_ACCRUALS_API_URL: "https://accruals-restapi.callisto.localhost/"
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Use Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '16.15.0'
     - run: npm ci
@@ -30,35 +40,55 @@ jobs:
     - run: npm run test
     - run: npm run build --if-present
 
-    - name: Get Image Tag
-      id: image-tags
+
+    - name: Scan with SonarCloud
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST: https://sonarcloud.io
       run: |
-          if [ "$GITHUB_REF_NAME" = "main" ]; then
-            echo "image_tag=latest" >> $GITHUB_ENV
-          fi
-          if [[ $GITHUB_REF_NAME =~ (eahw-[0-9]*) ]] && TAG=${match/#E/E}${BASH_REMATCH/#E/E}; then
-            echo "image_tag=${TAG}" >> $GITHUB_ENV
-          fi
+        npm install -g sonarqube-scanner
+        sonar-scanner \
+          -Dsonar.host.url=$SONAR_HOST \
+          -Dsonar.token=$SONAR_TOKEN \
+          -Dsonar.qualitygate.wait=true \
+          -Dsonar.projectKey=stephen-t-kaye_callisto-ui \
+          -Dsonar.organization=stephen-t-kaye \
+          -Dsonar.projectName=callisto-ui \
+          -Dsonar.branch.name=$GITHUB_REF_NAME \
+          -Dsonar.sources=./src \
+          -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info
 
-    - name: Build Image
-      id: build-image
-      uses: redhat-actions/buildah-build@v2
+    - name: Calculate Docker Tag
+      id: docker_tag
+      run: |
+        BRANCH=$(echo $GITHUB_REF_NAME | tr '[:lower:]' '[:upper:]') && [[ $BRANCH =~ (SK-[0-9]*) ]] && dockerTag=${match/#E/-E}${BASH_REMATCH/#E/-E}
+        if [[ -n ${dockerTag} ]]; then
+          echo "DOCKER_TAG=${dockerTag}" >> $GITHUB_OUTPUT
+        elif [[ "$GITHUB_REF_NAME" == "main" ]]; then
+          echo "DOCKER_TAG=latest" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
       with:
-        image: ${{ env.QUAY_REPO_NAME }}
-        tags: ${{ env.image_tag }}
-        containerfiles: |
-          ./dockerfile
-    
-    - name: Push image to Quay
-      id: push-to-quay
-      uses: redhat-actions/push-to-registry@v2
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push
+      id: push
+      uses: docker/build-push-action@v6
       with:
-        image: ${{ steps.build-image.outputs.image }}
-        tags: ${{ steps.build-image.outputs.tags }}
-        registry: ${{ env.QUAY_REGISTRY}}
-        username: ${{ secrets.QUAY_ROBOT_NAME }}
-        password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+        context: ./
+        file: dockerfile
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.docker_tag.outputs.DOCKER_TAG }}
 
-    - name: Print image url
-      run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
-
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true

@@ -4,7 +4,7 @@ import generateDocumentTitle from '../utils/generate-document-title/generateDocu
 const Home = () => {
   useEffect(() => {
     document.title = generateDocumentTitle('Home');
-  });
+  }, []);
 
   return (
     <>
