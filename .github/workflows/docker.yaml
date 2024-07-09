@@ -21,7 +21,7 @@ jobs:
       id-token: write
 
     env:
-      NPM_AUTH_TOKEN: ${{ secrets.npm_auth_token }}
+      # NPM_AUTH_TOKEN: ${{ secrets.npm_auth_token }}
       VITE_KC_URL: "https://keycloak.callisto.localhost/auth" 
       VITE_KC_REALM: "callisto" 
       VITE_KC_CLIENTID: "callistoreactclient" 
@@ -39,6 +39,24 @@ jobs:
     - run: npx stylelint "**/*.scss"
     - run: npm run test
     - run: npm run build --if-present
+
+
+    - name: Scan with SonarCloud
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST: https://sonarcloud.io
+      run: |
+        npm install -g sonarqube-scanner
+        sonar-scanner \
+          -Dsonar.host.url=$SONAR_HOST \
+          -Dsonar.token=$SONAR_TOKEN \
+          -Dsonar.qualitygate.wait=true \
+          -Dsonar.projectKey=stephen-t-kaye_callisto-ui \
+          -Dsonar.organization=stephen-t-kaye \
+          -Dsonar.projectName=callisto-ui \
+          -Dsonar.branch.name=$GITHUB_REF_NAME \
+          -Dsonar.sources=./src \
+          -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info
 
     - name: Calculate Docker Tag
       id: docker_tag
